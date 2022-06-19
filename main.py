@@ -32,33 +32,51 @@ labeling_methods = [
 
 ]
 
-if __name__ == '__main__':
-    for dataset in datasets:
-        x_train, x_test, y_train, y_test = train_test_split(
-            dataset[0][0], dataset[0][1], test_size=0.4, random_state=777
+
+class ActiveLearning:
+    def __init__(self, dataset, classifier, labeling_method, test_size=0.4, start_labels=10, seed=777):
+        self.title = f'classifier: {classifier[1]}, dataset: {dataset[1]}, labeling method: {method[1]}\n'
+
+        x_train, self.x_test, oracle_train, self.y_test = train_test_split(
+            dataset[0][0], dataset[0][1], test_size=test_size, random_state=seed
         )
 
+        self.x_labeled, self.x_unlabeled, self.y_labeled, self.y_unlabeled = train_test_split(
+            x_train, oracle_train, train_size=start_labels, random_state=seed
+        )
+        self.method = labeling_method[0]
+        self.classifier = clone(classifier[0])
+        self.accuracies = []
+        self.losses = []
+
+    def train(self, stop=50):
+        while self.x_unlabeled.shape[0] > stop:
+            self.classifier.fit(self.x_labeled, self.y_labeled)
+
+            self.x_labeled, self.x_unlabeled, self.y_labeled, self.y_unlabeled = self.method(self.classifier,
+                                                                                             self.x_labeled,
+                                                                                             self.x_unlabeled,
+                                                                                             self.y_labeled,
+                                                                                             self.y_unlabeled)
+
+            y_pred = self.classifier.predict(self.x_test)
+
+            self.losses.append(log_loss(self.y_labeled, self.classifier.predict_proba(self.x_labeled)))
+            self.accuracies.append(accuracy_score(self.y_test, y_pred))
+
+    def plot(self):
+        plt.plot(self.losses)
+        plt.title(self.title + 'loss')
+        plt.show()
+        plt.plot(self.accuracies)
+        plt.title(self.title + 'accuracy')
+        plt.show()
+
+
+if __name__ == '__main__':
+    for dataset in datasets:
         for classifier in classifiers:
             for method in labeling_methods:
-                x_labeled, x_unlabeled, y_labeled, y_unlabeled = train_test_split(
-                    x_train, y_train, train_size=10, random_state=777
-                )
-                acc = []
-                loss = []
-                while x_unlabeled.shape[0] > 50:
-                    model = clone(classifier[0])
-                    model.fit(x_labeled, y_labeled)
-                    y_pred = model.predict(x_test)
-
-                    # y_unlabeled = classifier.predict(x_unlabeled)
-                    x_labeled, x_unlabeled, y_labeled, y_unlabeled = method[0](model,x_labeled, x_unlabeled, y_labeled,
-                                                                               y_unlabeled)
-                    # plot_confusion_matrix(classifier, x_test, y_test, cmap='GnBu')
-                    loss.append(log_loss(y_labeled,model.predict_proba(x_labeled)))
-                    acc.append(accuracy_score(y_test, y_pred))
-                plt.plot(loss)
-                plt.title(f'classifier: {classifier[1]}, dataset: {dataset[1]}, labeling method: {method[1]}\nloss')
-                plt.show()
-                plt.plot(acc)
-                plt.title(f'classifier: {classifier[1]}, dataset: {dataset[1]}, labeling method: {method[1]}\nacc')
-                plt.show()
+                model = ActiveLearning(dataset, classifier, method)
+                model.train()
+                model.plot()
